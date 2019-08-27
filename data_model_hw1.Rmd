@@ -5,62 +5,80 @@ date: "2019/8/22"
 output: pdf_document
 ---
 
+## Question 2.1
+
+#### Describe a situation or problem from your job, everyday life, current events, etc., for which a classification model would be appropriate. List some (up to 5) predictors that you might use.
+
+Predict whether customers will open marketing email or not.
+We can predict this binary result (open or not open) based on the industry customers in, country customers from, last activity time, product type customers bought, and last time campaign outcome.
+
+## Question 2.2
+
+#### The files **credit_card_data-headers.txt** (with headers) contain a dataset with 654 data points, 6 continuous and 4 binary predictor variables. It has anonymized credit card applications with a binary response variable (last column) indicating if the application was positive or negative. The dataset is the ???Credit Approval Data Set??? from the UCI Machine Learning Repository [https://archive.ics.uci.edu/ml/datasets/Credit+Approval](https://archive.ics.uci.edu/ml/datasets/Credit+Approval)
+
+First of all, we should load the data before doing any analysis and predictions
+
 ```{r setup, include=FALSE}
 
 header<-read.delim("credit_card_data-headers.txt",header=TRUE)
 #read.table("credit_card_data-headers.txt",header = T,sep='\t')
-
+print(dim(header))
 head(header)
+
 
 ```
 
-## R Markdown
+R1 in column 11 is a variable that we want to predict(dependent variable). 
+In this report, I will build **SVM Model** in R using ksvm(package kernlab) first and then use knn method(k-Nearest-Neighbor;package kknn) to predict the binary result.
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
 ```{r message=FALSE}
 #install.packages("kernlab")
 library(kernlab)
 ```
 
-## Including Plots
+Because ksvm function requires a matrix data, I use as.matrix in the beginning.
 
+```{r pressure,message=FALSE}
 
-```{r pressure, echo=FALSE}
-
-class(header)
 header<-as.matrix(header)
 model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="vanilladot",C=100,scale=TRUE)
 
 # calculate a1...am
 a <- colSums(model@xmatrix[[1]] * model@coef[[1]])
+print(a)
+```
 
+```{r }
 # calculate a0
 a0 <- -model@b
-a0
+print(paste0("coefficient is ",a0))
 # see what the model predicts
+```
+
+```{r}
 pred <- predict(model,header[,1:10])
 # see what fraction of the model???s predictions match the actual classification
-sum(pred == header[,11]) / nrow(header)
+accu<-sum(pred == header[,11]) / nrow(header)
+print(paste0("Accuracy is ",accu))
+```
 
+To trade off two components of correctness and margin is called c. Hence, I use for loop to test what value is the best. It looks that accuracy is the same while c goes from 0.01 to 100.
+```{r message=FALSE}
 c<-c(0.0001,0.01,1,100,10000,100000)
 
 different_c<-c()
 for (i in c){
   model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="vanilladot",C=i,scaled=TRUE)
   pred=predict(model,header[,1:10])
+  print(i)
   print(sum(pred==header[,11])/nrow(header))
   different_c[i]<-sum(pred==header[,11])/nrow(header)
   }
 
-
-
 ```
 
-Use Different Kernel
-Rbfdot, polydot, anovadot
+After considing different **C**, I decide to build different model by using Different Kernel such as **Rbfdot, polydot, anovadot anovadot**
 ```{r}
 cost<-c()
 accuracy<-c()
@@ -76,12 +94,14 @@ for (i in c){
   diff_model<-append(diff_model,w)}
   }
 
-
 comparison<-data.frame(cost=cost,accuracy=accuracy,model=diff_model)
 
 comparison<-comparison[order(-accuracy),]
 head(comparison,5)
 ```
+Rbfdot have highest accuracy when cost is from 1000 to 10000
+See the confusion matrix under.
+
 ```{r}
 
 best_model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="rbfdot",C=10000,scaled=TRUE)
@@ -89,11 +109,11 @@ pred=predict(best_model,header[,1:10])
 
 table(pred,header[,11])
 
-
 ```
 
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+After having models by using SVM, Let us use knn method and compare the accuracy.
+One important thing is the number of k when you build the k-Nearest Neighbors.
+Hence, i build a function **knn_accuracy function** to drow a plot and figure out which k has the highest accuracy.
 
 ```{r message=FALSE}
 #install.packages("kknn")
@@ -117,15 +137,17 @@ for (i in 1:50){
 
 k_model<-data.frame(accuracy<-which_k,k=1:50)
 ```
-
+Here is the scatter plot 
+'x' is the k value; 'y' is the accuracy
+We can find that model has highest accuracy when k is **12** and the accuracy is around **85%**
 ```{r,message=FALSE}
 library(ggplot2)
-
-ggplot(aes(x=k,y=accuracy),data=k_model)+geom_point()
+ggplot(aes(x=k,y=accuracy),data=k_model)+geom_point()+ggtitle("K-Nearest-Neighbors")
 
 ```
 
-
+Last but not the least, I would like to use **train.kknn** method, which is a leave-one-out crossvalidation method and try different kerenel to evaluate our model by only train data. 
+First, I decide that train data is 80% of data and test data is remaining 20%. Then, I include kernel method **optimal, rectangular, inv, gaussian, and triangular**.
 
 ```{r}
 ratio=round(nrow(header.df)*0.2)
@@ -135,20 +157,23 @@ sample.index<-sample(1:nrow(header.df),size=ratio,replace=FALSE)
 train<-header.df[-sample.index,]
 test<-header.df[sample.index,]
 
-model2<-train.kknn(R1~.,train, kmax = 100,kernel=c("optimal","rectangular","inv","gaussian","triangular"),scale=TRUE)
+model2<-train.kknn(R1~.,train, kmax = 100,kernel=c("optimal","rectangular","inv",
+                                                   "gaussian","triangular"),scale=TRUE)
 
 print(model2)
 compare_5_kernel<-as.data.frame(model2$MEAN.SQU)
 
+apply(compare_5_kernel,2,which.min)
 
 ```
-
+Plot the comparison.
 
 ```{r,message=FALSE}
 library(tidyverse)
 compare_5_kernel$k<-seq(1,100,1)
 compare_5_kernel_viz<-compare_5_kernel %>% gather(key=kernel,value = mean_error,1:5)
 
-ggplot(aes(x=k,y=mean_error,color=kernel),data=compare_5_kernel_viz) +geom_point()
+ggplot(aes(x=k,y=mean_error,color=kernel),data=compare_5_kernel_viz) +
+  geom_point()+ggtitle("Leave One Out Crossvalidation Method")
 
 ```
