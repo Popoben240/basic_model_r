@@ -1,0 +1,154 @@
+---
+title: "Data_Modeling_hw1"
+author: "Po-Han, Lai"
+date: "2019/8/22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+header<-read.delim("credit_card_data-headers.txt",header=TRUE)
+#read.table("credit_card_data-headers.txt",header = T,sep='\t')
+
+head(header)
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r message=FALSE}
+#install.packages("kernlab")
+library(kernlab)
+```
+
+## Including Plots
+
+
+```{r pressure, echo=FALSE}
+
+class(header)
+header<-as.matrix(header)
+model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="vanilladot",C=100,scale=TRUE)
+
+# calculate a1...am
+a <- colSums(model@xmatrix[[1]] * model@coef[[1]])
+
+# calculate a0
+a0 <- -model@b
+a0
+# see what the model predicts
+pred <- predict(model,header[,1:10])
+# see what fraction of the model???s predictions match the actual classification
+sum(pred == header[,11]) / nrow(header)
+
+c<-c(0.0001,0.01,1,100,10000,100000)
+
+different_c<-c()
+for (i in c){
+  model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="vanilladot",C=i,scaled=TRUE)
+  pred=predict(model,header[,1:10])
+  print(sum(pred==header[,11])/nrow(header))
+  different_c[i]<-sum(pred==header[,11])/nrow(header)
+  }
+
+
+
+```
+
+Use Different Kernel
+Rbfdot, polydot, anovadot
+```{r}
+cost<-c()
+accuracy<-c()
+diff_model<-c()
+kernel_choice<-c("rbfdot","polydot","vanilladot","anovadot")
+for (i in c){
+  for (w in kernel_choice){
+  model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel=w,C=i,scaled=TRUE)
+  pred=predict(model,header[,1:10])
+  cost<-append(cost,i)
+  acc<-sum(pred==header[,11])/nrow(header)
+  accuracy<-append(accuracy,acc)
+  diff_model<-append(diff_model,w)}
+  }
+
+
+comparison<-data.frame(cost=cost,accuracy=accuracy,model=diff_model)
+
+comparison<-comparison[order(-accuracy),]
+head(comparison,5)
+```
+```{r}
+
+best_model <- ksvm(header[,1:10],header[,11],type="C-svc",kernel="rbfdot",C=10000,scaled=TRUE)
+pred=predict(best_model,header[,1:10])
+
+table(pred,header[,11])
+
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r message=FALSE}
+#install.packages("kknn")
+library(kknn)
+header.df<-as.data.frame(header)
+
+knn_accuracy = function(k){
+  prediction<-c()
+  for (i in 1:nrow(header.df)){
+    k_model<-kknn(R1~.,header.df[-i,],header.df[i,],k=k,scale=TRUE)
+    prediction_ans<-ifelse(predict(k_model)>=0.5,1,0)
+    prediction<-append(prediction,prediction_ans)}
+    accuracy=sum(prediction==header.df[,11])/nrow(header.df)
+    return(accuracy)
+}
+
+which_k=c()
+for (i in 1:50){
+  which_k[i]<-knn_accuracy(i)
+}
+
+k_model<-data.frame(accuracy<-which_k,k=1:50)
+```
+
+```{r,message=FALSE}
+library(ggplot2)
+
+ggplot(aes(x=k,y=accuracy),data=k_model)+geom_point()
+
+```
+
+
+
+```{r}
+ratio=round(nrow(header.df)*0.2)
+
+sample.index<-sample(1:nrow(header.df),size=ratio,replace=FALSE)
+
+train<-header.df[-sample.index,]
+test<-header.df[sample.index,]
+
+model2<-train.kknn(R1~.,train, kmax = 100,kernel=c("optimal","rectangular","inv","gaussian","triangular"),scale=TRUE)
+
+print(model2)
+compare_5_kernel<-as.data.frame(model2$MEAN.SQU)
+
+
+```
+
+
+```{r,message=FALSE}
+library(tidyverse)
+compare_5_kernel$k<-seq(1,100,1)
+compare_5_kernel_viz<-compare_5_kernel %>% gather(key=kernel,value = mean_error,1:5)
+
+ggplot(aes(x=k,y=mean_error,color=kernel),data=compare_5_kernel_viz) +geom_point()
+
+```
